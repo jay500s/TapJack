@@ -159,7 +159,7 @@ public class MainActivity extends Activity implements
     String mIncomingInvitationId = null;
 
     // Message buffer for sending messages
-    byte[] mMsgBuf = new byte[5];
+    byte[] mMsgBuf = new byte[6];
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -278,14 +278,16 @@ public class MainActivity extends Activity implements
 //                    piv.setVisibility(View.INVISIBLE);
                     pile.add(toRemIndex);
                     pile.add(nextToRemIndex);
+                    mScore = mCards.size();
+                    pScore = pCards.size() + 1;
+                    Log.v("tag","pscore is " + pScore);
                     scoreOnePoint(false);
                 } else {
+                    mScore--;
                     miv.setBackgroundResource(globalmap.get(nextToRemIndex).getImageId());
 //                    piv.setVisibility(View.INVISIBLE);
                     scoreOnePoint(true);
                 }
-
-//                iv.setBackgroundResource(toPlayCardId);
 
                 break;
             case R.id.button1:
@@ -935,7 +937,8 @@ public class MainActivity extends Activity implements
         if (mSecondsLeft <= 0) {
             return; // too late!
         }
-        mScore = mCards.size();
+//        mScore = mCards.size();
+//        pScore = pCards.size();
         pileSize++;
         updateScoreDisplay();
         updatePeerScoresDisplay();
@@ -971,8 +974,8 @@ public class MainActivity extends Activity implements
             pScore = (int) buf[1];
             pileSize = (int) buf[2];
             toRemIndex = (int) buf[3];
-//            toPlayCardId = (int) buf[3];
             nextToRemIndex = (int) buf[4];
+            mScore = (int) buf[5];
 //            if (buf[0] == 'F') {
 //                toPlayCardId = nextToRemIndex;
 //            }
@@ -1005,6 +1008,7 @@ public class MainActivity extends Activity implements
             mMsgBuf[3] = (byte) nextToRemIndex;
             mMsgBuf[4] = (byte) -1;
         }
+        mMsgBuf[5] = (byte) pScore;
 
 
         // Send to every other participant.
@@ -1128,7 +1132,7 @@ public class MainActivity extends Activity implements
                 piletv.setText((CharSequence) (formatScore(pileSize) + " - Pile Size"));
 
                 if (toRemIndex!= -1) {
-                    miv.setBackgroundResource(globalmap.get(toRemIndex).getImageId());
+                    piv.setBackgroundResource(globalmap.get(toRemIndex).getImageId());
                 }
             }
         }
