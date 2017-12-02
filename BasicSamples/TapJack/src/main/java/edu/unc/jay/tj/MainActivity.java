@@ -282,11 +282,14 @@ public class MainActivity extends Activity implements
                     pScore = pCards.size() + 1;
                     Log.v("tag","pscore is " + pScore);
                     scoreOnePoint(false);
+                    Log.v("tag","HOST CLICKED FOR TURN ");
                 } else {
                     mScore--;
+                    //nextToRemIndex = pCards.remove();
                     miv.setBackgroundResource(globalmap.get(nextToRemIndex).getImageId());
 //                    piv.setVisibility(View.INVISIBLE);
                     scoreOnePoint(true);
+                    Log.v("tag","OPPONENT CLICKED FOR TURN ");
                 }
 
                 break;
@@ -339,6 +342,7 @@ public class MainActivity extends Activity implements
                             onConnected(task.getResult());
                         } else {
                             Log.d(TAG, "signInSilently(): failure", task.getException());
+                            startSignInIntent();
                             onDisconnected();
                         }
                     }
@@ -1159,7 +1163,6 @@ public class MainActivity extends Activity implements
 
 
     public void initializeGlobalHash() {
-        CardState cs = null;
 //        int[] temp = new int[]{
 //                R.drawable.seven_of_hearts, R.drawable.seven_of_diamonds, R.drawable.seven_of_spades, R.drawable.seven_of_clubs,
 //                R.drawable.eight_of_hearts, R.drawable.eight_of_diamonds, R.drawable.eight_of_spades, R.drawable.eight_of_clubs,
@@ -1197,7 +1200,7 @@ public class MainActivity extends Activity implements
 
         int j = 0;
         for (int i: hashOrder) {
-            globalmap.put(j, temp[j]);
+            globalmap.put(j, temp[hashOrder.get(i)]);
             j++;
         }
     }
@@ -1218,6 +1221,12 @@ public class MainActivity extends Activity implements
         for (int i = 26; i < 52; i++) {
             pCards.add(cardOrder.get(i));
         }
+
+//          probably not necessary...
+//        List<Integer> debugMyShuffledCards = new ArrayList<Integer>(mCards);
+//        List<Integer> debugOpponentShuffledCards = new ArrayList<Integer>(pCards);
+
+
 
     }
 }
