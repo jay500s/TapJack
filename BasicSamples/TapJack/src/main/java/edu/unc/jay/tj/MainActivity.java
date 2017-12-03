@@ -98,7 +98,7 @@ public class MainActivity extends Activity implements
     public Queue<Integer> pCards = new PriorityQueue<Integer>();
     public Stack<Integer> pile = new Stack<Integer>();
     public ImageView miv = null;
-    public ImageView piv = null;
+//    public ImageView piv = null;
     public int pileSize = 0;
 
     // Image id from global map of the card that is to be played
@@ -109,6 +109,15 @@ public class MainActivity extends Activity implements
     public int toRemIndex = -1;
     public int nextToRemIndex = -1;
     boolean nextFlag = false;
+
+    public static final int SEND_SHUFFLED_CARDS = 0;
+    public static final int SEND_FLIPPED_CARD = 1;
+    public static final int SEND_PILE_CLAIMED_CARDS = 2;
+    public boolean hasShuffled = false;
+    public String shuffler = "";
+
+
+    public static final String R_ID_PREFIX = "2130837";
 
 
     /*
@@ -159,7 +168,7 @@ public class MainActivity extends Activity implements
     String mIncomingInvitationId = null;
 
     // Message buffer for sending messages
-    byte[] mMsgBuf = new byte[6];
+    byte[] mMsgBuf = new byte[150];
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -168,10 +177,10 @@ public class MainActivity extends Activity implements
         // Create the client used to sign in.
         mGoogleSignInClient = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_GAMES_SIGN_IN);
 
-        initializeGlobalHash();
-        initializeHands();
-        miv = (ImageView) findViewById(R.id.pile2);
-        piv = (ImageView) findViewById(R.id.pile);
+//        initializeGlobalHash();
+//        initializeHands();
+        miv = (ImageView) findViewById(R.id.pile);
+//        piv = (ImageView) findViewById(R.id.pile);
 
         // set up a click listener for everything we care about
         for (int id : CLICKABLES) {
@@ -268,35 +277,214 @@ public class MainActivity extends Activity implements
                 // user wants to play against a random opponent right now
                 startQuickGame();
                 break;
+            case R.id.button1:
+                if (!hasShuffled) {
+                    hasShuffled = true;
+                    initializeGlobalHash();
+                    initializeHands();
+
+                    Log.v("Tag", "SENDING SHUFFLED CARDS");
+
+                    mMsgBuf[0] = (byte) SEND_SHUFFLED_CARDS;
+                    for (int i = 0, j = 0; i < globalmap.size(); i++, j+=2) {
+                        int temp = globalmap.get(i).getImageId();
+                        String tempString = Integer.toString(temp);
+                        String firstHalf = tempString.substring(7, 9);
+                        Log.v("Tag", "MAP TEMP" + tempString);
+                        int convertedInt1 = Integer.parseInt(firstHalf);
+                        Log.v("Tag", "MAP INT" + convertedInt1);
+
+                        String secondHalf = tempString.substring(9, 10);
+                        int convertedInt2 = Integer.parseInt(secondHalf);
+                        Log.v("Tag", "MAP INT" + convertedInt2);
+
+                        mMsgBuf[j+1] = (byte) convertedInt1;
+                        mMsgBuf[j+2] = (byte) convertedInt2;
+                    }
+                    for (int i = 0; i < pCards.size(); i++) {
+                        mMsgBuf[i+1+globalmap.size()*2] = (byte) ((int) pCards.remove());
+                    }
+
+                    for (int i  = 0; i< 52; i++) {
+                        Log.v("Tag", "MAP " + i + " " + globalmap.get(i).getImageId());
+                    }
+
+                    for (int i = 0; i < mMsgBuf.length; i++) {
+                        Log.v("Tag", "" + mMsgBuf[i]);
+                    }
+
+                    for (Participant p: mParticipants) {
+                        if (!p.getParticipantId().equals(mMyId)) {
+                            mRealTimeMultiplayerClient.sendReliableMessage(mMsgBuf,
+                                    mRoomId, p.getParticipantId(), new RealTimeMultiplayerClient.ReliableMessageSentCallback() {
+                                        @Override
+                                        public void onRealTimeMessageSent(int statusCode, int tokenId, String recipientParticipantId) {
+                                            Log.d(TAG, "RealTime message sent");
+                                            Log.d(TAG, "  statusCode: " + statusCode);
+                                            Log.d(TAG, "  tokenId: " + tokenId);
+                                            Log.d(TAG, "  recipientParticipantId: " + recipientParticipantId);
+                                        }
+                                    })
+                                    .addOnSuccessListener(new OnSuccessListener<Integer>() {
+                                        @Override
+                                        public void onSuccess(Integer tokenId) {
+                                            Log.d(TAG, "Created a reliable message with tokenId: " + tokenId);
+                                        }
+                                    });
+                        }
+                    }
+
+                }
+                break;
             case R.id.button2:
                 // (gameplay) user clicked the "click me" button
                 Log.v("tag","button 2 is clicked");
-                if (isHost) {
-                    toRemIndex = mCards.remove();
-                    nextToRemIndex = pCards.remove();
-                    miv.setBackgroundResource(globalmap.get(toRemIndex).getImageId());
-//                    piv.setVisibility(View.INVISIBLE);
-                    pile.add(toRemIndex);
-                    pile.add(nextToRemIndex);
+
+                {
+                    int cardToPlay = mCards.remove();
+                    miv.setBackgroundResource(globalmap.get(cardToPlay).getImageId());
+                    Log.v("Tag", "THE CARD PLAYED WAS" + cardToPlay + " " + globalmap.get(cardToPlay).getImageId());
+                    pile.push(cardToPlay);
                     mScore = mCards.size();
-                    pScore = pCards.size() + 1;
-                    Log.v("tag","pscore is " + pScore);
-                    scoreOnePoint(false);
-                    Log.v("tag","HOST CLICKED FOR TURN ");
-                } else {
-                    mScore--;
-                    //nextToRemIndex = pCards.remove();
-                    miv.setBackgroundResource(globalmap.get(nextToRemIndex).getImageId());
-//                    piv.setVisibility(View.INVISIBLE);
-                    scoreOnePoint(true);
-                    Log.v("tag","OPPONENT CLICKED FOR TURN ");
+//                    Log.v("Tag", "My score is " + mScore);
+                    pileSize++;
+
+                    for (Participant p: mParticipants) {
+                        if (p.getParticipantId().equals(mMyId)) {
+                            TextView mtv = ((TextView) findViewById(R.id.my_score));
+                            mtv.setText((formatScore(mScore) + " - " + p.getDisplayName()));
+                        } else {
+                            TextView ptv = ((TextView) findViewById(R.id.p_score));
+                            ptv.setText((formatScore(pScore) + " - " + p.getDisplayName()));
+                        }
+                    }
+
+                    TextView piletv = ((TextView) findViewById(R.id.pile_size));
+                    piletv.setText((formatScore(pileSize) + " - Pile"));
+
+                    mMsgBuf[0] = (byte) SEND_FLIPPED_CARD;
+                    mMsgBuf[1] = (byte) mScore;
+                    mMsgBuf[2] = (byte) pileSize;
+                    mMsgBuf[3] = (byte) cardToPlay; //card index to remove here
+                    Log.v("Tag", "THE CARD SENT WAS" + (byte)cardToPlay);
+                    mMsgBuf[4] = (byte) pScore;
+
+                    for (Participant p: mParticipants) {
+                        if (!p.getParticipantId().equals(mMyId)) {
+
+                            mRealTimeMultiplayerClient.sendReliableMessage(mMsgBuf,
+                                    mRoomId, p.getParticipantId(), new RealTimeMultiplayerClient.ReliableMessageSentCallback() {
+                                        @Override
+                                        public void onRealTimeMessageSent(int statusCode, int tokenId, String recipientParticipantId) {
+                                            Log.d(TAG, "RealTime message sent");
+                                            Log.d(TAG, "  statusCode: " + statusCode);
+                                            Log.d(TAG, "  tokenId: " + tokenId);
+                                            Log.d(TAG, "  recipientParticipantId: " + recipientParticipantId);
+                                        }
+                                    })
+                                    .addOnSuccessListener(new OnSuccessListener<Integer>() {
+                                        @Override
+                                        public void onSuccess(Integer tokenId) {
+                                            Log.d(TAG, "Created a reliable message with tokenId: " + tokenId);
+                                        }
+                                    });
+                        }
+                    }
                 }
 
+
+//                if (isHost) {
+//                    toRemIndex = mCards.remove();
+//                    nextToRemIndex = pCards.remove();
+//                    miv.setBackgroundResource(globalmap.get(toRemIndex).getImageId());
+////                    piv.setVisibility(View.INVISIBLE);
+//                    pile.add(toRemIndex);
+//                    pile.add(nextToRemIndex);
+//                    mScore = mCards.size();
+//                    pScore = pCards.size() + 1;
+//                    Log.v("tag","pscore is " + pScore);
+//                    scoreOnePoint(false);
+//                    Log.v("tag","HOST CLICKED FOR TURN ");
+//                } else {
+//                    mScore--;
+//                    //nextToRemIndex = pCards.remove();
+//                    miv.setBackgroundResource(globalmap.get(nextToRemIndex).getImageId());
+////                    piv.setVisibility(View.INVISIBLE);
+//                    scoreOnePoint(true);
+//                    Log.v("tag","OPPONENT CLICKED FOR TURN ");
+//                }
+
                 break;
-            case R.id.button1:
-                // (gameplay) user clicked the "click me" button
-                Log.v("tag","button 1 is clicked");
+            case R.id.pile:
+
+                Log.v("Tag", "PILE CLICKED");
+
+                //checking for jack still buggy
+                //&& (pile.peek() == R.drawable.jh || pile.peek() == R.drawable.jd || pile.peek() == R.drawable.jc || pile.peek() == R.drawable.js)
+                if (pileSize > 0) {
+                    Log.v("Tag", "PILE CLICKED HERE");
+                    Log.v("Tag", "PILE SIZE " + pileSize);
+//                    for(int i: pile) {
+//                        Log.v("Tag", "Pile value: " + pile.get(i));
+//                        mCards.add(pile.get(i));
+//                    }
+
+                    for (int i = 0; i < pileSize; i++) {
+                        Log.v("Tag", "Pile value: " + i + " " + pile.get(i));
+                        mCards.add(pile.get(i));
+                    }
+
+                    mScore = mCards.size();
+
+                    for (Participant p: mParticipants) {
+                        if (p.getParticipantId().equals(mMyId)) {
+                            TextView mtv = ((TextView) findViewById(R.id.my_score));
+                            mtv.setText((formatScore(mScore) + " - " + p.getDisplayName()));
+                        }
+                    }
+
+                    pileSize = 0;
+
+                    TextView piletv = ((TextView) findViewById(R.id.pile_size));
+                    piletv.setText((formatScore(pileSize) + " - Pile"));
+
+                    mMsgBuf[0] = (byte) SEND_PILE_CLAIMED_CARDS;
+                    mMsgBuf[1] = (byte) mScore;
+                    mMsgBuf[2] = (byte) pileSize;
+
+                    for (int i = 0; i < pileSize; i++) {
+                        mMsgBuf[i+3] = (byte) (globalmap.get(pile.pop()).getImageId());
+                    }
+
+                    for (Participant p: mParticipants) {
+                        if (!p.getParticipantId().equals(mMyId)) {
+
+                            mRealTimeMultiplayerClient.sendReliableMessage(mMsgBuf,
+                                    mRoomId, p.getParticipantId(), new RealTimeMultiplayerClient.ReliableMessageSentCallback() {
+                                        @Override
+                                        public void onRealTimeMessageSent(int statusCode, int tokenId, String recipientParticipantId) {
+                                            Log.d(TAG, "RealTime message sent");
+                                            Log.d(TAG, "  statusCode: " + statusCode);
+                                            Log.d(TAG, "  tokenId: " + tokenId);
+                                            Log.d(TAG, "  recipientParticipantId: " + recipientParticipantId);
+                                        }
+                                    })
+                                    .addOnSuccessListener(new OnSuccessListener<Integer>() {
+                                        @Override
+                                        public void onSuccess(Integer tokenId) {
+                                            Log.d(TAG, "Created a reliable message with tokenId: " + tokenId);
+                                        }
+                                    });
+                        }
+                    }
+                }
+
+
                 break;
+//            case R.id.button1:
+//                // (gameplay) user clicked the "click me" button
+//                Log.v("tag","button 1 is clicked");
+//                break;
         }
     }
 
@@ -734,9 +922,9 @@ public class MainActivity extends Activity implements
             //get participants and my ID:
             mParticipants = room.getParticipants();
             mMyId = room.getParticipantId(mPlayerId);
-            if (isHost) {
-                hostId = room.getParticipantId(mPlayerId);
-            }
+//            if (isHost) {
+//                hostId = room.getParticipantId(mPlayerId);
+//            }
 
             // save room ID if its not initialized in onRoomCreated() so we can leave cleanly before the game starts.
             if (mRoomId == null) {
@@ -903,11 +1091,26 @@ public class MainActivity extends Activity implements
         mMultiplayer = multiplayer;
         mScore = 26;
         pScore = 26;
-        updateScoreDisplay();
-        broadcastScore(false);
+
+//        updateScoreDisplay();
+//        broadcastScore(false);
         switchToScreen(R.id.screen_game);
         findViewById(R.id.button1).setVisibility(View.VISIBLE);
         findViewById(R.id.button2).setVisibility(View.VISIBLE);
+
+        for (Participant p: mParticipants) {
+            if (p.getParticipantId().equals(mMyId)) {
+                TextView mtv = ((TextView) findViewById(R.id.my_score));
+                mtv.setText((formatScore(mScore) + " - " + p.getDisplayName()));
+            } else {
+                TextView ptv = ((TextView) findViewById(R.id.p_score));
+                ptv.setText((formatScore(pScore) + " - " + p.getDisplayName()));
+            }
+        }
+
+        TextView piletv = ((TextView) findViewById(R.id.pile_size));
+        piletv.setText((formatScore(pileSize) + " - Pile"));
+
 
         // run the gameTick() method every second to update the game.
 //        final Handler h = new Handler();
@@ -975,16 +1178,87 @@ public class MainActivity extends Activity implements
             byte[] buf = realTimeMessage.getMessageData();
             String sender = realTimeMessage.getSenderParticipantId();
             Log.d(TAG, "Message received: " + (char) buf[0] + "/" + (int) buf[1]);
-            pScore = (int) buf[1];
-            pileSize = (int) buf[2];
-            toRemIndex = (int) buf[3];
-            nextToRemIndex = (int) buf[4];
-            mScore = (int) buf[5];
+
+            if (buf[0] == SEND_SHUFFLED_CARDS) {
+
+                Log.v("Tag", "RECEIVED SHUFFLED CARDS");
+
+                for (int i = 0; i < buf.length; i++) {
+                    Log.v("Tag", "" + buf[i]);
+                }
+
+                for (int i = 0, j = 0; i < 52; i++, j+=2) {
+                    String temp = R_ID_PREFIX + (int) buf[j+1] + (int) buf[j+2];
+                    Log.v("Tag", ""+ buf[j+1] + " ~ " + buf[j+2]);
+                    int tempAsInt = Integer.parseInt(temp);
+                    globalmap.put(i, new CardState(tempAsInt, i));
+                }
+
+                for (int i  = 0; i< 52; i++) {
+                    Log.v("Tag", "MAP " + i + " " + globalmap.get(i).getImageId());
+                }
+
+                for (int i = 0; i < 26; i++) {
+                    mCards.add((int) buf[i+1+globalmap.size()*2]);
+                }
+
+
+
+
+            } else if (buf[0] == SEND_FLIPPED_CARD) {
+                pScore = (int) buf[1];
+                pileSize = (int) buf[2];
+
+                int cardPlayed = (buf[3]);
+                Log.v("Tag", "THE CARD RECEIVED WAS" + cardPlayed);
+                pile.push(cardPlayed);
+                mScore = (int) buf[4];
 //            if (buf[0] == 'F') {
 //                toPlayCardId = nextToRemIndex;
 //            }
 
-            updatePeerScoresDisplay();
+                for (Participant p: mParticipants) {
+                    if (p.getParticipantId().equals(mMyId)) {
+                        TextView mtv = ((TextView) findViewById(R.id.my_score));
+                        mtv.setText((formatScore(mScore) + " - " + p.getDisplayName()));
+                    } else {
+                        TextView ptv = ((TextView) findViewById(R.id.p_score));
+                        ptv.setText((formatScore(pScore) + " - " + p.getDisplayName()));
+                    }
+                }
+
+                TextView piletv = ((TextView) findViewById(R.id.pile_size));
+                piletv.setText((formatScore(pileSize) + " - Pile"));
+
+                miv.setBackgroundResource(globalmap.get(cardPlayed).getImageId());
+                Log.v("Tag", "THE CARD PLAYED WAS" + cardPlayed + " " + globalmap.get(cardPlayed).getImageId());
+            } else if (buf[0] == SEND_PILE_CLAIMED_CARDS) {
+
+                pScore = buf[1];
+                int prevPileSize = buf[2];
+
+                for (int i = 0; i < buf.length; i++) {
+                    Log.v("Tag", "" + buf[i]);
+                }
+
+//                for (int i = 0; i < prevPileSize; i++) {
+//                    pCards.add((int) buf[i+3]);
+//                }
+
+                pile = new Stack<>();
+
+                pileSize = 0;
+
+                for (Participant p: mParticipants) {
+                    if (!p.getParticipantId().equals(mMyId)) {
+                        TextView ptv = ((TextView) findViewById(R.id.p_score));
+                        ptv.setText((formatScore(pScore) + " - " + p.getDisplayName()));
+                    }
+                }
+
+                TextView piletv = ((TextView) findViewById(R.id.pile_size));
+                piletv.setText((formatScore(pileSize) + " - Pile"));
+            }
 
         }
     };
@@ -999,9 +1273,15 @@ public class MainActivity extends Activity implements
         // First byte in message indicates whether it's a final score or not
         mMsgBuf[0] = (byte) (finalScore ? 'F' : 'U');
 
+        // TODO
+
         // Second byte is the score.
         mMsgBuf[1] = (byte) mScore;
         mMsgBuf[2] = (byte) pileSize;
+
+        {
+
+        }
 
         if (isHost) {
             Log.v("tag","i am host");
@@ -1055,7 +1335,7 @@ public class MainActivity extends Activity implements
             R.id.button_accept_popup_invitation, R.id.button_invite_players,
             R.id.button_quick_game, R.id.button_see_invitations, R.id.button_sign_in,
             R.id.button_sign_out, R.id.button1, R.id.button2, R.id.button_single_player,
-            R.id.button_single_player_2
+            R.id.button_single_player_2, R.id.pile
     };
 
     // This array lists all the individual screens our game has.
@@ -1135,9 +1415,9 @@ public class MainActivity extends Activity implements
                 TextView piletv = ((TextView) findViewById(R.id.pile_size));
                 piletv.setText((CharSequence) (formatScore(pileSize) + " - Pile Size"));
 
-                if (toRemIndex!= -1) {
-                    piv.setBackgroundResource(globalmap.get(toRemIndex).getImageId());
-                }
+//                if (toRemIndex!= -1) {
+//                    piv.setBackgroundResource(globalmap.get(toRemIndex).getImageId());
+//                }
             }
         }
     }
@@ -1207,6 +1487,8 @@ public class MainActivity extends Activity implements
 
     public void initializeHands() {
         List<Integer> cardOrder = new ArrayList<Integer>();
+
+        //honestly, i'm not sure this shuffling is necessary either...
 
         for (int i = 0; i < 52; i++) {
             cardOrder.add(i);
