@@ -391,6 +391,13 @@ public class MainActivity extends Activity implements
                         }
                     }
                 }
+                
+                //sleep for other player to receive card
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
+                    
+                }
 
 
 //                if (isHost) {
